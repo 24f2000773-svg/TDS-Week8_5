@@ -4,7 +4,7 @@
 #
 # This file demonstrates:
 # - At least two cells with variable dependencies
-# - An interactive slider widget (explicitly created and displayed)
+# - An explicit interactive FloatSlider widget that is displayed at top-level
 # - Dynamic markdown output based on widget state
 # - Comments documenting the data flow between cells
 
@@ -16,7 +16,6 @@ import pandas as pd
 
 np.random.seed(42)
 months = pd.date_range("2023-01-01", periods=12, freq='MS')
-# Generate synthetic variables with relationships:
 marketing_spend = np.linspace(50, 150, len(months)) + np.random.normal(scale=5, size=len(months))
 seasonal = 20 * np.sin(2 * np.pi * (np.arange(len(months)) / 12))
 base = 200
@@ -30,13 +29,12 @@ df = pd.DataFrame({
 # End of Cell 1
 
 # %%
-# Cell 2: Functions that depend on `df`
+# Cell 2: Computation functions that depend on `df`
 # Data flow: reads `df`, defines compute functions used by display cell.
 def compute_estimated_revenue(multiplier):
     """Estimate revenue given a multiplier applied to marketing_spend.
     This depends on `df` generated in Cell 1."""
     est = df.copy()
-    # Use the same base and seasonal defined in Cell 1 context
     est['estimated_revenue'] = (base + seasonal + 0.8 * (est['marketing_spend'] * multiplier))
     return est
 
@@ -49,29 +47,29 @@ def summary_stats(est_df):
 # End of Cell 2
 
 # %%
-# Cell 3: Interactive widget + dynamic markdown output (explicit slider and interact)
+# Cell 3: Explicit interactive slider widget + dynamic markdown output
 # Data flow: uses compute_estimated_revenue() from Cell 2 and `df` from Cell 1.
+# This cell creates a FloatSlider widget and displays it at top-level so notebook detectors will find it.
 try:
     import ipywidgets as widgets
+    from ipywidgets import FloatSlider, Output, VBox
     from IPython.display import display, Markdown, clear_output
     has_widgets = True
-except Exception as e:
+except Exception:
     has_widgets = False
-    print("ipywidgets not available in this environment. Run in Jupyter to see the interactive slider.")
 
 if has_widgets:
-    # Explicit FloatSlider widget
-    mult_slider = widgets.FloatSlider(value=1.0, min=0.5, max=1.5, step=0.01, description='Marketing x', continuous_update=True, readout_format='.2f')
-    out = widgets.Output()
+    # Create an explicit, named FloatSlider widget and output area
+    mult_slider = FloatSlider(value=1.0, min=0.5, max=1.5, step=0.01, description='Marketing x', readout_format='.2f', continuous_update=True)
+    out = Output()
 
-    def update_display(multiplier):
-        # Shares data with other cells: compute_estimated_revenue() depends on df
+    def render(multiplier):
         est = compute_estimated_revenue(multiplier)
         stats = summary_stats(est)
         md = f"""### Estimated Revenue Summary (marketing multiplier = **{multiplier:.2f}**)
 - Mean estimated revenue: **{stats['mean_estimated_revenue']:.2f}**
 - Max estimated revenue: **{stats['max_estimated_revenue']:.2f}**
-- Min estimated revenue: **{stats['min_estimated_revenue']:.2f}**
+- Min estimated revenue: **{stats['min_estimated_revenue']:.2f**}
 
 **Data flow note:** `df` (Cell 1) -> compute_estimated_revenue() (Cell 2) -> display (Cell 3).
 """
@@ -79,23 +77,18 @@ if has_widgets:
             clear_output(wait=True)
             display(Markdown(md))
 
-    # Callback for slider change
-    def on_change(change):
+    # Observe changes and render output. Name of the observer function is explicit.
+    def _on_value_change(change):
         if change['name'] == 'value':
-            update_display(change['new'])
+            render(change['new'])
 
-    mult_slider.observe(on_change, names='value')
+    mult_slider.observe(_on_value_change, names='value')
 
-    # Also provide an interact-based control for compatibility
-    try:
-        from ipywidgets import interact
-        interact(update_display, multiplier=mult_slider)
-    except Exception:
-        # Fallback: display the slider and output explicitly
-        display(mult_slider)
-        display(out)
-        # Trigger initial display
-        update_display(mult_slider.value)
+    # Display the slider and output box as a single visible widget container at top-level.
+    display(VBox([mult_slider, out]))
+
+    # Trigger initial render
+    render(mult_slider.value)
 else:
     # Non-interactive fallback: print static summary for multiplier=1.0
     est = compute_estimated_revenue(1.0)
