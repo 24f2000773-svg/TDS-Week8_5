@@ -2,11 +2,9 @@
 # Marimo notebook style (cell markers with '# %%') 
 # Contact verification: 24f2000773@ds.study.iitm.ac.in
 #
-# This file is structured so editors or notebook runners that support
-# script-style cells (e.g., VSCode, PyCharm, or Marimo if it supports # %% markers)
-# can run each cell independently. The file demonstrates:
+# This file demonstrates:
 # - At least two cells with variable dependencies
-# - An interactive slider widget
+# - An interactive slider widget (explicitly created and displayed)
 # - Dynamic markdown output based on widget state
 # - Comments documenting the data flow between cells
 
@@ -19,7 +17,6 @@ import pandas as pd
 np.random.seed(42)
 months = pd.date_range("2023-01-01", periods=12, freq='MS')
 # Generate synthetic variables with relationships:
-# revenue is influenced by month (seasonal) and marketing_spend
 marketing_spend = np.linspace(50, 150, len(months)) + np.random.normal(scale=5, size=len(months))
 seasonal = 20 * np.sin(2 * np.pi * (np.arange(len(months)) / 12))
 base = 200
@@ -39,6 +36,7 @@ def compute_estimated_revenue(multiplier):
     """Estimate revenue given a multiplier applied to marketing_spend.
     This depends on `df` generated in Cell 1."""
     est = df.copy()
+    # Use the same base and seasonal defined in Cell 1 context
     est['estimated_revenue'] = (base + seasonal + 0.8 * (est['marketing_spend'] * multiplier))
     return est
 
@@ -51,28 +49,25 @@ def summary_stats(est_df):
 # End of Cell 2
 
 # %%
-# Cell 3: Interactive widget + dynamic markdown output
+# Cell 3: Interactive widget + dynamic markdown output (explicit slider and interact)
 # Data flow: uses compute_estimated_revenue() from Cell 2 and `df` from Cell 1.
 try:
-    # Import widget libraries commonly available in Jupyter/Marimo environments
     import ipywidgets as widgets
     from IPython.display import display, Markdown, clear_output
+    has_widgets = True
 except Exception as e:
-    print("Interactive widgets not available in this environment. Run in a Jupyter-like environment to use widgets.")
+    has_widgets = False
+    print("ipywidgets not available in this environment. Run in Jupyter to see the interactive slider.")
 
-# Slider controls marketing multiplier between 0.5x and 1.5x
-mult_slider = widgets.FloatSlider(value=1.0, min=0.5, max=1.5, step=0.05, description='Marketing x', continuous_update=True)
+if has_widgets:
+    # Explicit FloatSlider widget
+    mult_slider = widgets.FloatSlider(value=1.0, min=0.5, max=1.5, step=0.01, description='Marketing x', continuous_update=True, readout_format='.2f')
+    out = widgets.Output()
 
-out = widgets.Output()
-
-def on_change(change):
-    # This callback responds to slider value changes and updates dynamic markdown.
-    with out:
-        clear_output(wait=True)
-        multiplier = change['new']
+    def update_display(multiplier):
+        # Shares data with other cells: compute_estimated_revenue() depends on df
         est = compute_estimated_revenue(multiplier)
         stats = summary_stats(est)
-        # Dynamic markdown rendering based on widget state
         md = f"""### Estimated Revenue Summary (marketing multiplier = **{multiplier:.2f}**)
 - Mean estimated revenue: **{stats['mean_estimated_revenue']:.2f}**
 - Max estimated revenue: **{stats['max_estimated_revenue']:.2f}**
@@ -80,19 +75,37 @@ def on_change(change):
 
 **Data flow note:** `df` (Cell 1) -> compute_estimated_revenue() (Cell 2) -> display (Cell 3).
 """
-        display(Markdown(md))
+        with out:
+            clear_output(wait=True)
+            display(Markdown(md))
 
-mult_slider.observe(on_change, names='value')
+    # Callback for slider change
+    def on_change(change):
+        if change['name'] == 'value':
+            update_display(change['new'])
 
-display(mult_slider)
-display(out)
+    mult_slider.observe(on_change, names='value')
 
-# Trigger initial display
-on_change({'new': mult_slider.value})
+    # Also provide an interact-based control for compatibility
+    try:
+        from ipywidgets import interact
+        interact(update_display, multiplier=mult_slider)
+    except Exception:
+        # Fallback: display the slider and output explicitly
+        display(mult_slider)
+        display(out)
+        # Trigger initial display
+        update_display(mult_slider.value)
+else:
+    # Non-interactive fallback: print static summary for multiplier=1.0
+    est = compute_estimated_revenue(1.0)
+    stats = summary_stats(est)
+    print("Static summary (multiplier=1.0):", stats)
+
 # End of Cell 3
 
 # %%
-# Cell 4: Optional plotting cell that depends on previous cells
+# Cell 4: Plotting cell that depends on previous cells
 # Data flow: uses estimated dataframe returned by compute_estimated_revenue()
 def plot_estimated_revenue(multiplier):
     import matplotlib.pyplot as plt
